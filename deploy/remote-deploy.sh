@@ -60,6 +60,7 @@ parse_env_file() {
       BACKUP_DIR) BACKUP_DIR="$val" ;;
       BACKUP_KEEP_COUNT) BACKUP_KEEP_COUNT="$val" ;;
       MYSQL_CONTAINER) MYSQL_CONTAINER="$val" ;;
+      COMPOSE_FILE) COMPOSE_FILE="$val" ;;
     esac
   done < "$env_file"
 }
@@ -73,6 +74,7 @@ BACKUP_BEFORE_MIGRATE="${BACKUP_BEFORE_MIGRATE:-}"
 BACKUP_DIR="${BACKUP_DIR:-}"
 BACKUP_KEEP_COUNT="${BACKUP_KEEP_COUNT:-}"
 MYSQL_CONTAINER="${MYSQL_CONTAINER:-}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 
 parse_env_file .env
 
@@ -92,7 +94,7 @@ if [[ -n "${GHCR_READ_TOKEN:-}" ]]; then
   GHCR_LOGGED_IN=1
 fi
 
-compose=(docker compose --env-file .env -f docker-compose.prod.yml)
+compose=(docker compose --env-file .env -f "$COMPOSE_FILE")
 
 "${compose[@]}" pull
 
@@ -181,9 +183,9 @@ EOF
   fi
 fi
 
-# 独立一次性容器执行数据库迁移
+# 独立一次性容器执行数据库迁移（带依赖启动，确保栈内 MySQL 已就绪）
 echo "[deploy] Running Alembic migrations..."
-"${compose[@]}" run --rm --no-deps backend python -m alembic upgrade head
+"${compose[@]}" run --rm backend python -m alembic upgrade head
 
 # 启动服务
 "${compose[@]}" up -d --remove-orphans --wait --wait-timeout 180

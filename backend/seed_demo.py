@@ -10,7 +10,7 @@
     docker compose exec backend python seed_demo.py --total 500 --days 28 --yes
 
 安全限制：
-- 默认只允许 DB_HOST 为 127.0.0.1 / localhost / host.docker.internal；
+- 默认只允许 DB_HOST 为 127.0.0.1 / localhost / host.docker.internal / mysql；
   其他地址必须显式设置 ALLOW_REMOTE_SEED=1 才放行。
 - 必须带 --yes 才会真正清空并写入；不带时只打印目标库与将要生成的数量。
 
@@ -144,7 +144,7 @@ def die(message: str) -> None:
 
 def guard_environment(yes: bool) -> None:
     """只允许本机或容器内网地址，防止误清线上数据。"""
-    allowed_hosts = {"127.0.0.1", "localhost", "host.docker.internal"}
+    allowed_hosts = {"127.0.0.1", "localhost", "host.docker.internal", "mysql"}
     url = make_url(settings.database_url)
     host = url.host or ""
     if host not in allowed_hosts and os.getenv("ALLOW_REMOTE_SEED") != "1":

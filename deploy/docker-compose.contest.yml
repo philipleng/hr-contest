@@ -1,0 +1,73 @@
+name: hr-contest
+
+# 参赛演示专用栈：自带 MySQL 5.7.32，完全独立于宿主机数据库。
+# 数据保存在命名卷 mysql_data；请勿执行 docker compose down -v（会连数据库一起删除）。
+services:
+  mysql:
+    image: mysql:5.7.32
+    env_file:
+      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${DB_NAME:-hr_contest}
+      MYSQL_USER: ${DB_USER:-hr_contest}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --sql-mode=ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+    volumes:
+      - mysql_data:/var/lib/mysql
+    expose:
+      - "3306"
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: ${IMAGE_BACKEND:?IMAGE_BACKEND is required}:${IMAGE_TAG:?IMAGE_TAG is required}
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/app/uploads
+      - private_uploads:/app/app/private_uploads
+    expose:
+      - "8000"
+    init: true
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    image: ${IMAGE_WEB:?IMAGE_WEB is required}:${IMAGE_TAG:?IMAGE_TAG is required}
+    ports:
+      - "${HTTP_PORT:-127.0.0.1:8081}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  mysql_data:
+  uploads:
+  private_uploads:

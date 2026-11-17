@@ -369,23 +369,19 @@ bash remote-deploy.sh
 
 > 每次部署工作流都会用 GitHub Variables/Secrets 重新生成目标机 `.env`，因此**不要直接在服务器上改 `.env`**，否则下次部署会被覆盖；需要持久化的配置改 GitHub Variables/Secrets。
 
-### 4.8 参赛演示环境部署（独立目录 + 独立库）
+### 4.8 参赛演示环境部署（栈内自带数据库）
 
-演示环境与任何正式环境**完全隔离**：独立部署目录、独立数据库、独立端口。工作流文件：`.github/workflows/deploy-contest.yml`，仅手动触发。
+演示环境**自带 MySQL 5.7.32 容器**，与宿主机数据库完全隔离：`web + backend + mysql` 三个容器组成独立网络，数据保存在命名卷 `mysql_data`。宿主机只需提供目录、端口和域名，**不需要建库、不需要授权宿主机 MySQL**。
+
+工作流文件：`.github/workflows/deploy-contest.yml`，仅手动触发；Compose 文件：`deploy/docker-compose.contest.yml`。
 
 **服务器侧前置条件（一次性）**
 
-1. 新建独立数据库与账号（库名建议 `hr_contest`，勿复用任何现有库）：
+1. 新建部署目录（如 `/opt/hr-contest`），确认该 SSH 用户可执行 `docker`。
+2. 选一个未被占用的回环端口（默认 `127.0.0.1:8081`），在宿主机 Nginx 增加一个 `server_name` 反代到该端口（模板见 `deploy/host-nginx.conf.example`）。
+3. 确认可访问 Docker Hub（首次需拉取 `mysql:5.7.32`）。
 
-   ```sql
-   CREATE DATABASE IF NOT EXISTS hr_contest CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   CREATE USER IF NOT EXISTS 'hr_contest'@'%' IDENTIFIED BY '<独立密码>';
-   GRANT ALL PRIVILEGES ON hr_contest.* TO 'hr_contest'@'%';
-   FLUSH PRIVILEGES;
-   ```
-
-2. 新建部署目录（如 `/opt/hr-contest`），确认该 SSH 用户可执行 `docker`。
-3. 选一个未被占用的回环端口（默认 `127.0.0.1:8081`），在宿主机 Nginx 增加一个 `server_name` 反代到该端口（模板见 `deploy/host-nginx.conf.example`）。
+> ⚠️ 数据在命名卷里，**不要执行 `docker compose down -v`**，否则演示数据会被一并删除（可重新初始化）。
 
 **GitHub 侧配置（本仓库 Settings → Secrets and variables → Actions）**
 
@@ -394,21 +390,23 @@ bash remote-deploy.sh
 | Variable | `DEPLOY_HOST` / `DEPLOY_USER` | 目标机地址与 SSH 用户 |
 | Variable | `DEPLOY_PATH` | 默认 `/opt/hr-contest` |
 | Variable | `HTTP_PORT` | 默认 `127.0.0.1:8081` |
-| Variable | `DB_NAME` / `DB_USER` | 默认 `hr_contest` |
+| Variable | `DB_NAME` / `DB_USER` | 默认 `hr_contest`（栈内 MySQL 初始化时使用） |
 | Variable | `CORS_ORIGINS` | 演示域名，如 `https://demo.example.com` |
 | Variable | `ENABLE_API_DOCS` | 演示环境默认 `true`，方便评委查看接口文档 |
 | Secret | `DEPLOY_SSH_KEY` | 目标机 SSH 私钥 |
-| Secret | `DB_PASSWORD` / `JWT_SECRET` | 独立数据库密码、随机长密钥（≥32 位） |
+| Secret | `DB_PASSWORD` | 栈内 MySQL 业务账号密码 |
+| Secret | `DB_ROOT_PASSWORD` | 可选，栈内 MySQL root 密码；不配时回退为 `DB_PASSWORD` |
+| Secret | `JWT_SECRET` | 随机长密钥（≥32 位） |
 
 **部署步骤**
 
 1. `Actions → Deploy contest demo → Run workflow`，`image_tag` 填 `latest`（或 `sha-<完整提交SHA>` 回滚）。
-2. 工作流会拉取镜像 → 备份 → `alembic upgrade head` → 重启服务。
+2. 工作流会拉取镜像 → 启动栈内 MySQL → 执行 `alembic upgrade head` → 启动服务。
 3. 首次部署后，在目标机执行一次初始化（自动创建 admin 账号 + 500 条演示数据）：
 
    ```bash
    cd /opt/hr-contest
-   docker compose --env-file .env -f docker-compose.prod.yml \
+   docker compose --env-file .env -f docker-compose.contest.yml \
      exec -T backend python seed_demo.py --total 500 --days 28 \
      --admin-password '<自定义管理员密码>' --yes
    ```
