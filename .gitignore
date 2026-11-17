@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Backend
+backend/venv/
+backend/.env
+backend/uploads/
+backend/app/uploads/
+backend/app/private_uploads/
+
+# Frontend
+node_modules/
+dist/
+h5/node_modules/
+h5/dist/
+admin/node_modules/
+admin/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+.env.production
+!backend/.env.example
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# OS generated files
+desktop.ini
+
+# AI / Test / Lint local caches
+.agent/
+.pytest_cache/
+.ruff_cache/
+.screenshots/

@@ -1,0 +1,49 @@
+name: hr-contest
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    image: ${IMAGE_BACKEND:-hr-contest-backend:local}
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - uploads:/app/app/uploads
+      - private_uploads:/app/app/private_uploads
+    expose:
+      - "8000"
+    init: true
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/web.Dockerfile
+      args:
+        VITE_OSS_DOMAIN: ${VITE_OSS_DOMAIN:-}
+    image: ${IMAGE_WEB:-hr-contest-web:local}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  uploads:
+  private_uploads:

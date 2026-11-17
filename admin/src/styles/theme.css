@@ -1,0 +1,398 @@
+/* 视觉基线：Direction C · 现代产品风
+   颜色 / 圆角 / 阴影集中在此，页面只引用变量，避免散落硬编码 */
+:root {
+  --ap-canvas: #f4f7f6;
+  --ap-surface: #ffffff;
+  --ap-ink: #16201e;
+  --ap-ink-soft: #4f625d;
+  --ap-muted: #7c8f8a;
+  --ap-rule: #e3eae7;
+  --ap-rule-soft: #eef3f1;
+  --ap-teal: #0f5c55;
+  --ap-teal-soft: #e6f2ee;
+  --ap-amber: #c98a1e;
+  --ap-amber-soft: #fbf1dc;
+  --ap-red: #b04a35;
+  --ap-red-soft: #fbeae6;
+  --ap-blue: #3f6b9e;
+  --ap-blue-soft: #e9f0f9;
+  --ap-green: #2e6b4f;
+  --ap-green-soft: #e7f3ed;
+  --ap-mono: Consolas, "SFMono-Regular", Menlo, monospace;
+  --ap-shadow: 0 1px 2px rgba(20, 40, 36, 0.04), 0 6px 18px rgba(20, 40, 36, 0.05);
+
+  /* Element Plus 变量映射：控件颜色跟着品牌走 */
+  --el-color-primary: #0f5c55;
+  --el-color-primary-light-3: #578d88;
+  --el-color-primary-light-5: #87aeaa;
+  --el-color-primary-light-7: #b7cecc;
+  --el-color-primary-light-8: #cfdedd;
+  --el-color-primary-light-9: #e7efee;
+  --el-color-primary-dark-2: #0c4a44;
+  --el-color-success: #2e6b4f;
+  --el-color-success-light-3: #6d9784;
+  --el-color-success-light-5: #96b5a7;
+  --el-color-success-light-7: #c0d3ca;
+  --el-color-success-light-8: #d5e1dc;
+  --el-color-success-light-9: #e9f2ee;
+  --el-color-success-dark-2: #255740;
+  --el-color-warning: #c98a1e;
+  --el-color-warning-light-3: #d9ad61;
+  --el-color-warning-light-5: #e4c48e;
+  --el-color-warning-light-7: #efdcbc;
+  --el-color-warning-light-8: #f5e7d2;
+  --el-color-warning-light-9: #faf3e9;
+  --el-color-warning-dark-2: #a16e18;
+  --el-color-danger: #b04a35;
+  --el-color-danger-light-3: #c88072;
+  --el-color-danger-light-5: #d7a49a;
+  --el-color-danger-light-7: #e7c8c2;
+  --el-color-danger-light-8: #efdad6;
+  --el-color-danger-light-9: #f7edea;
+  --el-color-danger-dark-2: #8d3b2a;
+  --el-color-error: #b04a35;
+  --el-color-info: #7c8f8a;
+  --el-color-info-light-3: #a3b1ad;
+  --el-color-info-light-5: #bdc7c4;
+  --el-color-info-light-7: #d7dcdb;
+  --el-color-info-light-8: #e5e9e7;
+  --el-color-info-light-9: #f2f4f3;
+  --el-color-info-dark-2: #63726e;
+
+  --el-text-color-primary: #16201e;
+  --el-text-color-regular: #4f625d;
+  --el-text-color-secondary: #7c8f8a;
+  --el-text-color-placeholder: #a3b3ae;
+  --el-border-color: #e3eae7;
+  --el-border-color-light: #eef3f1;
+  --el-border-color-lighter: #eef3f1;
+  --el-border-color-extra-light: #f3f7f5;
+  --el-fill-color-light: #f2f7f5;
+  --el-fill-color-lighter: #f7faf9;
+  --el-fill-color-blank: #ffffff;
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f4f7f6;
+  --el-font-size-base: 13px;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-box-shadow-light: 0 1px 2px rgba(20, 40, 36, 0.04), 0 6px 18px rgba(20, 40, 36, 0.05);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ap-canvas);
+  color: var(--ap-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 卡片 ---------- */
+.el-card {
+  border: 1px solid var(--ap-rule);
+  border-radius: 12px;
+  box-shadow: var(--ap-shadow);
+  background: var(--ap-surface);
+}
+
+.el-card__body {
+  padding: 14px 16px;
+}
+
+/* ---------- 按钮 ---------- */
+.el-button:not(.is-link):not(.is-text) {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.el-button--small:not(.is-link):not(.is-text) {
+  border-radius: 6px;
+  min-height: 30px;
+}
+
+/* ---------- 输入控件 ---------- */
+.el-input__wrapper,
+.el-select__wrapper {
+  border-radius: 8px;
+  background: #fcfdfc;
+  box-shadow: 0 0 0 1px var(--ap-rule) inset;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px #cddbd7 inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--ap-teal) inset;
+}
+
+.el-textarea__inner {
+  border-radius: 8px;
+  border: 1px solid var(--ap-rule);
+  background: #fcfdfc;
+  padding: 8px 11px;
+  line-height: 1.6;
+}
+
+.el-textarea__inner:focus {
+  box-shadow: none;
+  border-color: var(--ap-teal);
+}
+
+/* ---------- 表格 ---------- */
+.el-table {
+  --el-table-border-color: var(--ap-rule-soft);
+  --el-table-header-bg-color: #f7faf9;
+  --el-table-header-text-color: var(--ap-muted);
+  --el-table-row-hover-bg-color: #f9fcfb;
+  --el-table-text-color: var(--ap-ink-soft);
+  font-size: 12.5px;
+}
+
+.el-table th.el-table__cell {
+  height: 38px;
+  padding: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.el-table td.el-table__cell {
+  padding: 8px 0;
+}
+
+.el-table .cell {
+  line-height: 1.55;
+}
+
+/* 去掉表格底部那条多余的横线 */
+.el-table__inner-wrapper::before {
+  display: none;
+}
+
+/* 设计稿不用斑马纹，靠 hover 区分行 */
+.el-table__body tr.el-table__row {
+  cursor: pointer;
+}
+
+.el-table .col-mono .cell {
+  font-family: var(--ap-mono);
+  font-size: 11px;
+  color: var(--ap-muted);
+}
+
+/* ---------- 分页 ---------- */
+.el-pagination {
+  --el-pagination-font-size: 12px;
+  font-weight: 500;
+  color: var(--ap-muted);
+}
+
+.el-pagination .el-pager li {
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+/* ---------- 弹窗 / 抽屉 ---------- */
+.el-dialog {
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(20, 40, 36, 0.16);
+}
+
+.el-dialog__header {
+  padding: 16px 20px 10px;
+  margin-right: 0;
+}
+
+.el-dialog__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ap-ink);
+}
+
+.el-dialog__body {
+  padding: 6px 20px 10px;
+}
+
+.el-dialog__footer {
+  padding: 10px 20px 18px;
+}
+
+.el-drawer__header {
+  margin-bottom: 0;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--ap-rule);
+  color: var(--ap-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.el-drawer__body {
+  padding: 16px 20px;
+}
+
+/* 移动端导航抽屉：内容自己管理内边距 */
+.nav-drawer .el-drawer__body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- 描述列表（详情） ---------- */
+.el-descriptions__label.el-descriptions__cell.is-bordered-label {
+  background: #f8fbfa;
+  color: var(--ap-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.el-descriptions__content.el-descriptions__cell.is-bordered-content {
+  color: var(--ap-ink-soft);
+  font-size: 12.5px;
+}
+
+.el-descriptions__body .el-descriptions__table.is-bordered .el-descriptions__cell {
+  border-color: var(--ap-rule-soft);
+}
+
+/* ---------- 标签 ---------- */
+.el-tag {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+/* ---------- 状态胶囊（自定义，视觉与设计稿一致） ---------- */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.status-pill::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-pill.is-teal {
+  color: var(--ap-teal);
+  background: var(--ap-teal-soft);
+}
+
+.status-pill.is-amber {
+  color: var(--ap-amber);
+  background: var(--ap-amber-soft);
+}
+
+.status-pill.is-blue {
+  color: var(--ap-blue);
+  background: var(--ap-blue-soft);
+}
+
+.status-pill.is-green {
+  color: var(--ap-green);
+  background: var(--ap-green-soft);
+}
+
+.status-pill.is-red {
+  color: var(--ap-red);
+  background: var(--ap-red-soft);
+}
+
+.status-pill.is-grey {
+  color: var(--ap-muted);
+  background: #f0f3f2;
+}
+
+/* ---------- 页面标题区（全局复用） ---------- */
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.page-head h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ap-ink);
+}
+
+.page-head p {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  color: var(--ap-muted);
+}
+
+.head-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 900px) {
+  /* iOS 聚焦输入框时不要放大页面 */
+  .el-input__inner,
+  .el-textarea__inner,
+  .el-select__wrapper {
+    font-size: 16px;
+  }
+
+  .el-button:not(.is-link):not(.is-text):not(.el-button--small) {
+    min-height: 40px;
+  }
+
+  .el-dialog {
+    max-width: 94vw;
+  }
+
+  .el-card__body {
+    padding: 12px;
+  }
+
+  .el-drawer__body {
+    padding: 12px 14px;
+  }
+
+  .el-descriptions__label.el-descriptions__cell.is-bordered-label {
+    font-size: 10.5px;
+  }
+
+  .page-head {
+    margin-bottom: 12px;
+  }
+
+  .page-head h2 {
+    font-size: 18px;
+  }
+
+  .page-head p {
+    display: none;
+  }
+
+  .head-actions .el-button {
+    padding: 7px 10px;
+    font-size: 11.5px;
+  }
+}

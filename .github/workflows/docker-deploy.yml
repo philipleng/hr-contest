@@ -1,0 +1,343 @@
+name: CI
+
+# 参赛公开版工作流：只保留质量门（测试 / lint / 前端构建 / MySQL 5.7 冒烟）与镜像构建。
+# 生产部署 Job 已移除 —— 部署目标机等机密配置不进入公开仓库。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: hr-contest-ci
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  APP_NAME: hr-contest
+
+jobs:
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest
+        working-directory: backend
+        run: python -m pytest -q
+
+  lint:
+    name: Backend lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run ruff
+        run: ruff check --config backend/ruff.toml backend/app backend/alembic backend/tests
+
+  frontend-build:
+    name: Frontend build (h5 & admin)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build h5 and verify artifacts
+        run: |
+          (cd h5 && npm ci && npm run build)
+          test -f h5/dist/index.html
+
+      - name: Build admin and verify artifacts
+        run: |
+          (cd admin && npm ci && npm run build)
+          test -f admin/dist/index.html
+          test -d admin/dist/assets
+          test -n "$(ls -A admin/dist/assets)"
+
+  mysql57-smoke:
+    name: MySQL 5.7.32 migration & SQL smoke
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: mysql+pymysql://root:ci_root_password_not_prod@127.0.0.1:33306/hr_ci_test?charset=utf8mb4
+      MIGRATE_DATABASE_URL: mysql+pymysql://root:ci_root_password_not_prod@127.0.0.1:33306/hr_ci_test?charset=utf8mb4
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start isolated MySQL 5.7.32 container
+        run: |
+          docker run -d \
+            --name hr-mysql57-smoke \
+            -p 127.0.0.1:33306:3306 \
+            -e MYSQL_ROOT_PASSWORD=ci_root_password_not_prod \
+            -e MYSQL_DATABASE=hr_ci_test \
+            mysql:5.7.32 \
+            --character-set-server=utf8mb4 \
+            --collation-server=utf8mb4_unicode_ci \
+            --sql-mode=ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+
+      - name: Wait for MySQL 5.7.32 readiness
+        run: |
+          python - <<'PY'
+          import subprocess
+          import time
+          import pymysql
+
+          for attempt in range(1, 46):
+              try:
+                  conn = pymysql.connect(
+                      host="127.0.0.1",
+                      port=33306,
+                      user="root",
+                      password="ci_root_password_not_prod",
+                      database="hr_ci_test",
+                      connect_timeout=5,
+                  )
+                  with conn.cursor() as cur:
+                      cur.execute("SELECT VERSION(), @@sql_mode")
+                      version, sql_mode = cur.fetchone()
+                  conn.close()
+                  assert str(version).startswith("5.7.32"), f"Unexpected MySQL version: {version}"
+                  assert "ONLY_FULL_GROUP_BY" in str(sql_mode), f"Missing ONLY_FULL_GROUP_BY: {sql_mode}"
+                  print(f"MySQL ready on attempt {attempt}: version={version}, sql_mode={sql_mode}")
+                  break
+              except Exception as exc:
+                  if attempt == 45:
+                      subprocess.run(["docker", "logs", "hr-mysql57-smoke"], check=False)
+                      raise
+                  print(f"Waiting for MySQL (attempt {attempt}/45): {exc}")
+                  time.sleep(2)
+          PY
+
+      - name: Verify Alembic upgrade, downgrade, and idempotent re-upgrade
+        run: |
+          alembic -c backend/alembic.ini upgrade head
+          alembic -c backend/alembic.ini downgrade base
+          alembic -c backend/alembic.ini upgrade head
+
+      - name: Verify schema, collation, and MySQL 5.7.32 ONLY_FULL_GROUP_BY SQL smoke
+        run: |
+          python - <<'PY'
+          import pymysql
+
+          expected_tables = {
+              "applicant",
+              "staff",
+              "status_history",
+              "interview_record",
+              "import_batch",
+              "schema_version",
+              "contact_log",
+              "candidate_source",
+              "resume_document",
+          }
+
+          conn = pymysql.connect(
+              host="127.0.0.1",
+              port=33306,
+              user="root",
+              password="ci_root_password_not_prod",
+              database="hr_ci_test",
+              charset="utf8mb4",
+              autocommit=False,
+          )
+          try:
+              with conn.cursor() as cur:
+                  cur.execute(
+                      """
+                      SELECT TABLE_NAME, TABLE_COLLATION
+                      FROM information_schema.TABLES
+                      WHERE TABLE_SCHEMA = 'hr_ci_test'
+                      """
+                  )
+                  rows = cur.fetchall()
+                  collations = {name: collation for name, collation in rows}
+                  missing = expected_tables - set(collations.keys())
+                  assert not missing, f"Missing tables: {sorted(missing)}"
+                  bad_collations = {
+                      t: collations[t]
+                      for t in expected_tables
+                      if collations[t] != "utf8mb4_unicode_ci"
+                  }
+                  assert not bad_collations, f"Unexpected collations: {bad_collations}"
+
+                  # Smoke 1: nullable gender insert + multi-column GROUP BY under ONLY_FULL_GROUP_BY
+                  cur.execute(
+                      """
+                      INSERT INTO applicant (first_name, last_name, gender, phone, source_type, status)
+                      VALUES
+                        ('Juan', 'Dela Cruz', NULL, '09171234567', 'self', 'new'),
+                        ('Maria', 'Santos', 'female', '09171234568', 'self', 'contacted')
+                      """
+                  )
+                  cur.execute("SELECT LAST_INSERT_ID()")
+                  first_id = cur.fetchone()[0]
+
+                  cur.execute(
+                      """
+                      SELECT status, gender, COUNT(*) AS cnt
+                      FROM applicant
+                      WHERE deleted_at IS NULL
+                      GROUP BY status, gender
+                      """
+                  )
+                  grouped = cur.fetchall()
+                  assert len(grouped) == 2, f"Unexpected GROUP BY result: {grouped}"
+
+                  # Smoke 2: contact_log MAX(id) grouping under ONLY_FULL_GROUP_BY
+                  cur.execute(
+                      """
+                      INSERT INTO contact_log (applicant_id, channel, result, note)
+                      VALUES
+                        (%s, 'phone', 'no_answer', 'smoke 1'),
+                        (%s, 'sms', 'reached', 'smoke 2')
+                      """,
+                      (first_id, first_id),
+                  )
+                  cur.execute(
+                      """
+                      SELECT c.applicant_id, c.channel, c.result
+                      FROM contact_log c
+                      INNER JOIN (
+                        SELECT applicant_id, MAX(id) AS max_id
+                        FROM contact_log
+                        GROUP BY applicant_id
+                      ) latest ON c.id = latest.max_id
+                      """
+                  )
+                  latest_rows = cur.fetchall()
+                  assert len(latest_rows) == 1 and latest_rows[0][1] == "sms", (
+                      f"Unexpected contact_log MAX(id) result: {latest_rows}"
+                  )
+              conn.rollback()
+          finally:
+              conn.close()
+          print("MySQL 5.7.32 schema, collation, and ONLY_FULL_GROUP_BY SQL smoke passed.")
+          PY
+
+      - name: Stop MySQL 5.7.32 container
+        if: always()
+        run: docker rm -f hr-mysql57-smoke || true
+
+  build:
+    name: Build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    # 只允许 push 到 main 或手动触发构建；PR 永不进入构建
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            scope: backend
+          - image: web
+            context: .
+            dockerfile: ./deploy/docker/web.Dockerfile
+            scope: web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image prefix
+        id: image
+        run: |
+          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          echo "prefix=${REGISTRY}/${owner}/${APP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.prefix }}-${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ vars.DOCKER_PLATFORM || 'linux/amd64' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_OSS_DOMAIN=${{ vars.VITE_OSS_DOMAIN }}
+            VITE_FB_PAGE_USERNAME=${{ vars.VITE_FB_PAGE_USERNAME }}
+          cache-from: type=gha,scope=${{ matrix.scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.scope }}

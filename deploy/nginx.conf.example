@@ -1,0 +1,98 @@
+# HR 人力池系统 · Nginx 生产配置模板
+# 用法：复制到 /etc/nginx/conf.d/hr.conf，替换域名与路径后 nginx -t && nginx -s reload
+#
+# 部署形态：H5 与后台都是 Vite 静态产物，Nginx 同源托管 + 反代 FastAPI。
+# 好处：没有跨域问题，也不需要在后端开 CORS 白名单。
+
+upstream hr_backend {
+    server 127.0.0.1:8000;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name hr.example.com;
+
+    # 强制 HTTPS（证书配好后打开）
+    # return 301 https://$host$request_uri;
+
+    # 关键：后端单文件上限 100MB，这里要给到 110MB，否则大视频在上传前就被 Nginx 拒成 413，
+    # 而 FastAPI 里的 413 校验和「删除半成品」逻辑根本不会被触发。
+    client_max_body_size 110m;
+    client_body_timeout 120s;
+
+    # 上传照片/视频走前后端都需要时间，避免 504
+    proxy_read_timeout 180s;
+    proxy_send_timeout 180s;
+
+    # 安全响应头（/uploads 下另有 nosniff，这里兜住页面本身）
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript image/svg+xml;
+    gzip_min_length 1024;
+
+    # ---------- H5 自助申请端 ----------
+    location / {
+        root /var/www/hr/h5;
+        index index.html;
+        # history 路由：刷新 /apply/success 不能 404
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ---------- 管理后台 ----------
+    location = /admin {
+        return 301 /admin/;
+    }
+
+    # 管理后台构建 base=/admin/，所以用 root 让 /admin/xxx 映射到 /var/www/hr/admin/xxx
+    location /admin/ {
+        root /var/www/hr;
+        try_files $uri $uri/ /admin/index.html;
+    }
+
+    location /admin/assets/ {
+        root /var/www/hr;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # ---------- 后端 API ----------
+    location /api/ {
+        proxy_pass http://hr_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+
+        # 真实客户端 IP：后端以 --forwarded-allow-ips 白名单为准，
+        # 只信任来自本机 Nginx 的这个头，客户端自己伪造的会被覆盖
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ---------- 本地上传目录不再公开 ----------
+    # 照片/视频与简历同属个人数据，统一经 /api 鉴权读取（JWT / 短时效签名 URL）。
+    location /uploads/ {
+        access_log off;
+        return 404;
+    }
+
+    # 静态资源长缓存（带 hash 的文件名）
+    location /assets/ {
+        root /var/www/hr/h5;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+
+# ---------- HTTPS 参考 ----------
+# server {
+#     listen 443 ssl http2;
+#     server_name hr.example.com;
+#     ssl_certificate     /etc/nginx/ssl/hr.crt;
+#     ssl_certificate_key /etc/nginx/ssl/hr.key;
+#     其余 location 与上面一致
+# }

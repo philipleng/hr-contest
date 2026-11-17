@@ -1,0 +1,10 @@
+# HR 人力池系统 · 后端测试依赖
+# 只用于本地测试与 CI，不进入运行时镜像（Dockerfile 只安装 requirements.txt）
+#
+# 安装：
+#   backend\venv\Scripts\python -m pip install -r backend/requirements-dev.txt
+
+pytest==9.2.0
+httpx==0.28.1          # Starlette TestClient 依赖
+pytest-cov==7.1.0
+ruff==0.17.4

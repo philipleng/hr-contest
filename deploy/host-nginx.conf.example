@@ -1,0 +1,24 @@
+# 宿主机 Nginx 反代模板（适用于 80/443 已被现有站点占用、不能停 Nginx 的机器）
+# 安装到宿主机 Nginx 的 vhost 目录后执行：nginx -t && systemctl reload nginx
+# Docker web 容器通过 HTTP_PORT=127.0.0.1:8080 只绑定回环地址。
+
+server {
+    listen 80;
+    server_name hr.example.com;  # 换成实际域名或 IP
+
+    client_max_body_size 110m;
+    client_body_timeout 120s;
+    proxy_read_timeout 180s;
+    proxy_send_timeout 180s;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_set_header X-Real-IP $remote_addr;
+        # 覆盖客户端自带 XFF，避免绕过限流
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
