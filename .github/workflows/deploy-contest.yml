@@ -1,0 +1,181 @@
+name: Deploy contest demo
+
+# 参赛演示环境部署（手动触发，避免每次 push 自动覆盖演示数据）。
+# 镜像由 CI 工作流构建并推送到 GHCR，本工作流只负责把 .env 与脚本送上目标机并重启。
+# 所有目标机信息与密钥均来自本仓库的 Variables / Secrets，不写入代码。
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "镜像标签（sha-<完整提交SHA> 或 latest）"
+        required: true
+        default: latest
+      seed_demo:
+        description: "部署后是否重建 500 条演示数据（会清空 applicant 相关表）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: hr-contest-demo
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  APP_NAME: hr-contest
+
+jobs:
+  deploy:
+    name: Deploy to demo server
+    runs-on: ubuntu-latest
+    environment: contest
+
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/hr-contest' }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      HTTP_PORT: ${{ vars.HTTP_PORT || '127.0.0.1:8081' }}
+      DB_HOST: ${{ vars.DB_HOST || 'host.docker.internal' }}
+      DB_PORT: ${{ vars.DB_PORT || '3306' }}
+      DB_NAME: ${{ vars.DB_NAME || 'hr_contest' }}
+      DB_USER: ${{ vars.DB_USER || 'hr_contest' }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+      OSS_ROLE_ARN: ${{ secrets.OSS_ROLE_ARN }}
+      OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+      OSS_REGION: ${{ vars.OSS_REGION || 'ap-southeast-6' }}
+      OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+      APP_ENV: production
+      ENABLE_API_DOCS: ${{ vars.ENABLE_API_DOCS || 'true' }}
+      CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DB_PASSWORD JWT_SECRET; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is not configured"
+              missing=1
+            fi
+          done
+          if [ -n "${JWT_SECRET:-}" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ] || [ "$JWT_SECRET" = "dev-secret-change-me" ] || [ "$JWT_SECRET" = "REPLACE_WITH_RANDOM_LONG_SECRET" ]; then
+              echo "::error::JWT_SECRET must be at least 32 characters and not a placeholder"
+              missing=1
+            fi
+          fi
+          exit "$missing"
+
+      - name: Prepare deployment files
+        run: |
+          set -euo pipefail
+          umask 077
+          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          prefix="${REGISTRY}/${owner}/${APP_NAME}"
+
+          {
+            printf 'HTTP_PORT=%s\n' "$HTTP_PORT"
+            printf 'IMAGE_BACKEND=%s\n' "${prefix}-backend"
+            printf 'IMAGE_WEB=%s\n' "${prefix}-web"
+            printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG"
+            printf 'DB_HOST=%s\n' "$DB_HOST"
+            printf 'DB_PORT=%s\n' "$DB_PORT"
+            printf 'DB_NAME=%s\n' "$DB_NAME"
+            printf 'DB_USER=%s\n' "$DB_USER"
+            printf 'DB_PASSWORD=%s\n' "$DB_PASSWORD"
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'JWT_ALGORITHM=HS256\n'
+            printf 'JWT_EXPIRE_HOURS=72\n'
+            printf 'AUTO_MIGRATE=false\n'
+            printf 'APP_ENV=%s\n' "$APP_ENV"
+            printf 'ENABLE_API_DOCS=%s\n' "$ENABLE_API_DOCS"
+            printf 'CORS_ORIGINS=%s\n' "${CORS_ORIGINS:-}"
+            if [ -n "${MIGRATE_DATABASE_URL:-}" ]; then
+              printf 'MIGRATE_DATABASE_URL=%s\n' "$MIGRATE_DATABASE_URL"
+            fi
+            printf 'OSS_ACCESS_KEY_ID=%s\n' "${OSS_ACCESS_KEY_ID:-}"
+            printf 'OSS_ACCESS_KEY_SECRET=%s\n' "${OSS_ACCESS_KEY_SECRET:-}"
+            printf 'OSS_ROLE_ARN=%s\n' "${OSS_ROLE_ARN:-}"
+            printf 'OSS_BUCKET=%s\n' "${OSS_BUCKET:-}"
+            printf 'OSS_REGION=%s\n' "${OSS_REGION:-}"
+            printf 'OSS_ENDPOINT=%s\n' "${OSS_ENDPOINT:-}"
+          } > .env
+
+          cp deploy/docker-compose.prod.yml ./docker-compose.prod.yml
+          cp deploy/remote-deploy.sh ./remote-deploy.sh
+          chmod 644 .env docker-compose.prod.yml remote-deploy.sh
+
+      - name: Ensure remote deploy directory
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          port: ${{ env.DEPLOY_PORT }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ vars.DEPLOY_SSH_FINGERPRINT }}
+          script: |
+            mkdir -p "${{ env.DEPLOY_PATH }}"
+            chmod 700 "${{ env.DEPLOY_PATH }}"
+
+      - name: Upload deployment files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          port: ${{ env.DEPLOY_PORT }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ vars.DEPLOY_SSH_FINGERPRINT }}
+          source: ".env,docker-compose.prod.yml,remote-deploy.sh"
+          target: ${{ env.DEPLOY_PATH }}
+          overwrite: true
+          timeout: 60s
+
+      - name: Pull images, migrate, and restart services
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          port: ${{ env.DEPLOY_PORT }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ vars.DEPLOY_SSH_FINGERPRINT }}
+          envs: GHCR_USERNAME,GHCR_READ_TOKEN
+          command_timeout: 15m
+          script: |
+            cd "${{ env.DEPLOY_PATH }}"
+            bash remote-deploy.sh
+
+      - name: Seed demo data
+        if: ${{ inputs.seed_demo }}
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          port: ${{ env.DEPLOY_PORT }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ vars.DEPLOY_SSH_FINGERPRINT }}
+          command_timeout: 10m
+          script: |
+            cd "${{ env.DEPLOY_PATH }}"
+            docker compose --env-file .env -f docker-compose.prod.yml \
+              exec -T backend python seed_demo.py --total 500 --days 28 --yes
+
+      - name: Remove local copy of secrets
+        if: always()
+        run: rm -f .env docker-compose.prod.yml remote-deploy.sh

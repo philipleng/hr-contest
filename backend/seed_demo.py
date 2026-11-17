@@ -234,6 +234,31 @@ def prepare_seed_files() -> tuple[list[str], str, bytes]:
     return photo_keys, "local/seed/sample_video.mp4", pdf_bytes
 
 
+def ensure_admin(db, password: str | None) -> None:
+    """首次初始化时创建管理员账号；已存在则保留不动。"""
+    row = db.execute(
+        text("SELECT id FROM staff WHERE username = 'admin'")
+    ).first()
+    if row:
+        if password:
+            print("[seed] admin 账号已存在，忽略 --admin-password")
+        return
+    if not password:
+        die(
+            "admin 账号不存在。首次初始化请加 --admin-password '<自定义密码>'，"
+            "否则无人能登录管理后台"
+        )
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
+    db.execute(
+        text(
+            "INSERT INTO staff (username, password_hash, real_name, role, status) "
+            "VALUES ('admin', :p, '系统管理员', 'admin', 'active')"
+        ),
+        {"p": hashed},
+    )
+    print("[seed] 已创建管理员账号 admin")
+
+
 def ensure_demo_staff(db) -> list[int]:
     """确保有 3 个演示员工，供业绩归属与员工管理页展示（密码随机不可用）。"""
     ids: list[int] = []
@@ -676,6 +701,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="生成参赛演示用人才池数据")
     parser.add_argument("--total", type=int, default=500, help="生成条数，默认 500")
     parser.add_argument("--days", type=int, default=28, help="创建时间跨度天数，默认 28")
+    parser.add_argument(
+        "--admin-password",
+        default=None,
+        help="首次初始化时创建 admin 账号所用密码；账号已存在时忽略",
+    )
     parser.add_argument("--yes", action="store_true", help="确认清空现有演示数据并写入")
     return parser.parse_args()
 
@@ -688,6 +718,7 @@ def main() -> None:
     photo_keys, video_key, pdf_bytes = prepare_seed_files()
 
     with SessionLocal() as db:
+        ensure_admin(db, args.admin_password)
         admin_row = db.execute(text("SELECT id FROM staff ORDER BY id LIMIT 1")).first()
         admin_id = admin_row[0] if admin_row else None
         operator_ids = ensure_demo_staff(db)
