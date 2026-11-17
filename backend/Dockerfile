@@ -18,6 +18,9 @@ RUN python -m pip install --no-cache-dir --upgrade pip -i "${PIP_INDEX_URL}" \
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
+# 演示数据脚本与其占位素材（仅参赛演示版使用，不影响业务逻辑）
+COPY seed_demo.py ./
+COPY demo_media ./demo_media
 RUN mkdir -p /app/app/uploads /app/app/private_uploads && chown -R app:app /app
 
 USER app
